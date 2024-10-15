@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <title>Hello World!</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Afacad+Flux:wght@100..1000&display=swap" rel="stylesheet">
+    <script defer src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        // Prevent default action for specific keys
+        window.addEventListener("keydown", function(e) {
+            if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].indexOf(e.code) > -1) {
+                e.preventDefault();
+            }
+        }, false);
+
+        // Handle channel selection
+        let currentChannelNumber = localStorage.getItem("currentChannel");
+        if (!currentChannelNumber) {
+            localStorage.setItem("currentChannel", 0);
+            currentChannelNumber = 0;
+        }
+
+        // Function to load HLS video
+        function loadHlsVideo(url) {
+            var video = document.getElementById('video');
+
+            // Check if HLS.js is supported
+            if (Hls.isSupported()) {
+                var hls = new Hls();
+                hls.loadSource(url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    video.play();
+                });
+            }
+            // If HLS is not supported, try the native HLS in some browsers (Safari, etc.)
+            else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url;
+                video.addEventListener('loadedmetadata', function() {
+                    video.play();
+                });
+            } else {
+                console.error('HLS not supported in this browser.');
+            }
+        }
+
+        let channels;
+
+        // Listen for data from the main process
+        window.electron.receiveData((event, data) => {
+            console.log(data.channels);
+            channels = data.channels;
+            loadHlsVideo(channels[currentChannelNumber]._doc.url);
+            const channelList = document.getElementById("channel-list");
+
+            for (let i in channels) {
+                const channelElement = document.createElement('div'); // Create a div element
+                const channelLogo = document.createElement('img'); // Create an img element
+                const channelName = document.createElement('p'); // Create a paragraph element
+                channelElement.classList.add("channel");
+                channelElement.setAttribute("channel-number", i);
+                channelLogo.src = channels[i]._doc.base64Logo;
+                channelName.classList.add("channel-name");
+                channelName.innerText = channels[i]._doc.name;
+                channelElement.append(channelLogo);
+                channelElement.append(channelName);
+                
+                if (i === currentChannelNumber) {
+                    setOverlayImage(channels[i]._doc.base64Logo);
+                    channelElement.classList.add("select");
+                }
+
+                channelList.append(channelElement);
+            }
+        });
+
+        window.onload = () => {
+            quickShow("overlay-info");
+            findChannel(currentChannelNumber);
+        };
+
+        // ArrowUp and ArrowDown navigation
+        let showing = false;
+
+        document.addEventListener('keydown', (event) => {
+            console.log(`Key pressed: ${event.key}`);
+            if (event.key === "h") {
+                toggleView("overlay-info");
+            }
+            if (event.key === "k") {
+                showing = !showing;
+                console.log(showing);
+                toggleView("channel-list");
+            }
+            if (event.key === "ArrowUp") {
+                if(!showing) return;
+                channelDown();
+            }
+            if (event.key === "ArrowDown") {
+                if(!showing) return;
+                channelUp();
+            }
+            if (event.key === "ArrowRight") {
+                if(!showing) return;
+                const selectedNumber = document.getElementsByClassName("select")[0].getAttribute("channel-number");
+                setOverlayImage(channels[selectedNumber]._doc.base64Logo);
+                quickShow("overlay-info");
+                toggleView("channel-list");
+                showing = false;
+                loadHlsVideo(channels[selectedNumber]._doc.url);
+                localStorage.setItem("currentChannel", selectedNumber);
+            }
+        });
+    </script>
+  </head>
+  <body>
+    <!-- channel info overlay -->
+    <div id="channel-list" class="hidden"></div>
+
+    <div id="overlay-info" class="hidden">
+        <img src="" alt="">
+    </div>
+
+    <video id="video" autoplay width="640" height="360"></video>
+  </body>
+</html>
